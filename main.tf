@@ -82,8 +82,59 @@ resource "aws_security_group" "public_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   tags = {
     Name = join("-", [local.name_prefix, "public", "sg"])
+  }
+}
+
+resource "aws_iam_role" "ec2_role" {
+  name               = join("-", [local.name_prefix, "ec2", "role"])
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      },
+    ]
+  })
+  managed_policy_arns = [
+    "arn:aws:iam::aws:policy/EC2InstanceConnect"
+  ]
+}
+
+resource "aws_iam_instance_profile" "ec2_instance_profile" {
+  name = join("-", [local.name_prefix, "ec2", "profile"])
+  role = aws_iam_role.ec2_role.name
+}
+
+resource "aws_instance" "nginx" {
+  ami                         = "ami-0bba69335379e17f8"
+  instance_type               = "t2.micro"
+  subnet_id                   = aws_subnet.public_a.id
+  vpc_security_group_ids      = [aws_security_group.public_sg.id]
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_instance_profile.name
+  user_data                   = file("user-data-ec2.sh")
+
+  tags = {
+    Name = join("-", [local.name_prefix, "nginx"])
   }
 }
